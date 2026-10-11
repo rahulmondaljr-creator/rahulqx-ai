@@ -40,8 +40,25 @@ class MainActivity : Activity() {
         super.onCreate(b)
         setContentView(R.layout.activity_main)
         findViewById<Button>(R.id.btnStart).setOnClickListener { startFlow() }
+        findViewById<Button>(R.id.btnTest).setOnClickListener { testVoice() }
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1002)
+        }
+    }
+    private fun testVoice() {
+        Toast.makeText(this, "Voice test...", Toast.LENGTH_SHORT).show()
+        val t = TextToSpeech(this) { st ->
+            if (st == TextToSpeech.SUCCESS) {
+                val r1 = t.setLanguage(Locale("bn", "IN"))
+                if (r1 == TextToSpeech.LANG_MISSING_DATA || r1 == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    val r2 = t.setLanguage(Locale("hi", "IN"))
+                    if (r2 == TextToSpeech.LANG_MISSING_DATA || r2 == TextToSpeech.LANG_NOT_SUPPORTED)
+                        t.setLanguage(Locale.ENGLISH)
+                }
+                t.speak("পরীক্ষা কণ্ঠস্বর কাজ করছে", TextToSpeech.QUEUE_FLUSH, null, "tv")
+            } else {
+                Toast.makeText(this, "TTS engine nai", Toast.LENGTH_LONG).show()
+            }
         }
     }
     private fun startFlow() {
@@ -76,6 +93,7 @@ class ScanService : Service() {
     private var lastSpeak = 0L
     private var lastFrame = 0L
     private var lastVerdict = ""
+    private var gotFrame = false
     private val handler = Handler(Looper.getMainLooper())
 
     override fun onBind(i: Intent?): IBinder? = null
@@ -191,23 +209,39 @@ class ScanService : Service() {
         (getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(dm)
         val w = 360
         val h = maxOf(200, 360 * dm.heightPixels / maxOf(1, dm.widthPixels))
-        reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+        reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
         disp = proj?.createVirtualDisplay("qx", w, h, dm.densityDpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader!!.surface, null, handler)
-        reader?.setOnImageAvailableListener({ r ->
-            val img = r.acquireLatestImage() ?: return@setOnImageAvailableListener
-            val now = System.currentTimeMillis()
-            if (now - lastFrame >= 3000) {
-                lastFrame = now
-                val p = img.planes[0]
-                val rowW = p.rowStride / p.pixelStride
-                val bmp = Bitmap.createBitmap(rowW, img.height, Bitmap.Config.ARGB_8888)
-                bmp.copyPixelsFromBuffer(p.buffer)
-                img.close()
-                handler.post { analyze(bmp) }
-            } else img.close()
-        }, handler)
+        schedulePoll()
+        handler.postDelayed({
+            if (!gotFrame) {
+                setBubble("QX AI\nNO FRAMES", 0xF23D1520.toInt())
+                speak("কোনো ফ্রেম পাইনি")
+            }
+        }, 15000)
         speak("স্ক্যান শুরু হয়েছে। চার্টের স্ক্রিনে নিয়ে যাও।")
+    }
+
+    private fun schedulePoll() {
+        handler.postDelayed({
+            try {
+                val img = reader?.acquireLatestImage()
+                if (img != null) {
+                    gotFrame = true
+                    val now = System.currentTimeMillis()
+                    if (now - lastFrame >= 3000) {
+                        lastFrame = now
+                        val p = img.planes[0]
+                        val rowW = p.rowStride / p.pixelStride
+                        val bmp = Bitmap.createBitmap(rowW, img.height, Bitmap.Config.ARGB_8888)
+                        bmp.copyPixelsFromBuffer(p.buffer)
+                        img.close()
+                        analyze(bmp)
+                    } else img.close()
+                }
+            } catch (_: Exception) {}
+            if (proj != null) schedulePoll()
+        }, 1500)
     }
 
     private fun analyze(bmp0: Bitmap) {
