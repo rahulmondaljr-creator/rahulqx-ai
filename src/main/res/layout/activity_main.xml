@@ -25,14 +25,21 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
-        android:text="১. Start চাপো\n২. Screen share permission দাও\n৩. Quotex chart খোলো — bubble ভাসবে\n৪. Bubble টেনে সরাও / tap = বন্ধ\n\n⚠️ ক্যান্ডেল-গতির পড়া, গ্যারান্টি না।"
+        android:text="১. TEST VOICE চেপে আওয়াজ যাচাই করো\n২. Start চাপো → permission দাও\n৩. Quotex chart খোলো — bubble ভাসবে\n৪. Bubble টেনে সরাও / tap = বন্ধ\n\n⚠️ ক্যান্ডেল-গতির পড়া, গ্যারান্টি না।"
         android:textColor="#8FA3C0"
         android:textSize="13sp" />
+    <Button
+        android:id="@+id/btnTest"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:text="TEST VOICE"
+        android:textSize="16sp" />
     <Button
         android:id="@+id/btnStart"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="12dp"
         android:text="START AI"
         android:textSize="18sp" />
 </LinearLayout>
