@@ -117,6 +117,7 @@ class ScanService : Service() {
     private val scanLabels = arrayOf("ANALYZING SMA...", "ANALYZING EMA...", "ANALYZING BOLLINGER...", "ANALYZING MACD...", "ANALYZING STOCHASTIC...", "ANALYZING ATR...")
     private var scanIdx = 0
     private var scanning = false
+    private var dbg = ""
 
     override fun onBind(i: Intent?): IBinder? = null
 
@@ -145,7 +146,14 @@ class ScanService : Service() {
             ocrClient = tr.getMethod("getClient", oc).invoke(null, def)
             ocrImageClass = Class.forName("com.google.mlkit.vision.common.InputImage")
             ocrProcess = ocrClient!!.javaClass.getMethod("process", ocrImageClass)
-        } catch (e: Exception) { ocrClient = null }
+        } catch (e: Exception) {
+            try {
+                val tr = Class.forName("com.google.mlkit.vision.text.TextRecognition")
+                ocrClient = tr.getMethod("getClient").invoke(null)
+                ocrImageClass = Class.forName("com.google.mlkit.vision.common.InputImage")
+                ocrProcess = ocrClient!!.javaClass.getMethod("process", ocrImageClass)
+            } catch (e2: Exception) { ocrClient = null }
+        }
     }
 
     private fun buildNotif(): Notification {
@@ -235,7 +243,7 @@ class ScanService : Service() {
         val now = System.currentTimeMillis()
         if (lockUntil > now) {
             val left = (lockUntil - now) / 1000
-            tvSub?.text = lockDir + " active · " + (left / 60) + "m " + (left % 60) + "s left"
+            tvSub?.text = lockDir + " active " + (left / 60) + "m" + (left % 60) + "s | " + dbg
         }
         if (scanning) {
             scanIdx = (scanIdx + 1) % scanLabels.size
@@ -299,6 +307,7 @@ class ScanService : Service() {
         val px = IntArray(w * h); bmp.getPixels(px, 0, w, 0, 0, w, h)
         val yMax = (h * 0.62).toInt(); val xMin = (w * 0.04).toInt(); val xMax = (w * 0.96).toInt()
         val mids = ArrayList<Float>(); val ups = ArrayList<Boolean>(); val heights = ArrayList<Float>()
+        var tg = 0; var tr = 0
         var col = xMin
         while (col < xMax) {
             var g = 0; var r = 0; var top = -1; var bot = -1
@@ -307,21 +316,42 @@ class ScanService : Service() {
                 for (row in 0 until yMax) {
                     val cc = px[row * w + c2]
                     val R = cc shr 16 and 255; val G = cc shr 8 and 255; val B = cc and 255
-                    if (G > R + 25 && G > B + 10) { g++; if (top < 0) top = row; bot = row }
-                    else if (R > G + 25 && R > B + 10) { r++; if (top < 0) top = row; bot = row }
+                    if (G > 90 && G > R + 12 && G > B + 4) { g++; tg++; if (top < 0) top = row; bot = row }
+                    else if (R > 90 && R > G + 12 && R > B + 4) { r++; tr++; if (top < 0) top = row; bot = row }
                 }
-                if (g + r > 4) c2++ else break
+                if (g + r > 3) c2++ else break
             }
             val cw = c2 - col
-            if (cw >= 3 && g + r > 8) {
+            if (cw >= 2 && g + r > 5) {
                 mids.add(-((top + bot) / 2f)); ups.add(g > r); heights.add((bot - top).toFloat())
                 col = c2 + 1
             } else col++
         }
         val now = System.currentTimeMillis()
+        dbg = "g:" + tg + " r:" + tr + " c:" + mids.size
         if (mids.size < 8) {
-            setPanel(curMarket + "  " + curPrice, "NO CHART", "chart kholo", 0xF2121830.toInt())
-            if (now - lastSpeak > 12000) { speak("আমি চার্ট দেখছি না"); lastSpeak = now }
+            val area = ((xMax - xMin) * yMax).toFloat()
+            if (tg + tr > area * 0.008f && tg + tr > 60) {
+                var lg = 0; var lr = 0; var rg2 = 0; var rr = 0
+                val midX = (xMin + xMax) / 2
+                for (cc2 in xMin until xMax) for (row in 0 until yMax) {
+                    val cc = px[row * w + cc2]
+                    val R = cc shr 16 and 255; val G = cc shr 8 and 255; val B = cc and 255
+                    val gr = G > 90 && G > R + 12 && G > B + 4
+                    val rd = R > 90 && R > G + 12 && R > B + 4
+                    if (cc2 < midX) { if (gr) lg++; if (rd) lr++ } else { if (gr) rg2++; if (rd) rr++ }
+                }
+                val ls = rg2 - rr
+                val v = if (ls > 12) Verdict("WEAK UP", "UP", 1, 0xF20E3D2C.toInt(), "দুর্বল আপ। এক মিনিটের জন্য।")
+                else if (ls < -12) Verdict("WEAK DOWN", "DOWN", 1, 0xF23D1520.toInt(), "দুর্বল ডাউন। এক মিনিটের জন্য।")
+                else Verdict("WAIT", "WAIT", 0, 0xF2121830.toInt(), "মিক্সড।")
+                lastDeep = now
+                scanning = false
+                applyVerdict(v)
+                return
+            }
+            setPanel(curMarket + "  " + curPrice, "NO CHART", dbg, 0xF2121830.toInt())
+            if (now - lastSpeak > 15000) { speak("আমি চার্ট দেখছি না"); lastSpeak = now }
             return
         }
         val n = mids.size
@@ -383,15 +413,15 @@ class ScanService : Service() {
         val now = System.currentTimeMillis()
         val mkt = curMarket
         if (lockUntil > now && lockMarket == mkt) {
-            setPanel(mkt + "  " + curPrice, lockDir + " ACTIVE", "signal cholle notun hobe", 0xF23A2F10.toInt())
+            setPanel(mkt + "  " + curPrice, lockDir + " ACTIVE", "signal cholle notun hobe | " + dbg, 0xF23A2F10.toInt())
             return
         }
         if (v.dir == "WAIT") {
-            setPanel(mkt + "  " + curPrice, "WAIT / MIXED", "SMA MACD milseni", 0xF2121830.toInt())
+            setPanel(mkt + "  " + curPrice, "WAIT / MIXED", dbg, 0xF2121830.toInt())
             return
         }
         lockMarket = mkt; lockDir = v.dir; lockUntil = now + v.expMin * 60000L + 15000
-        setPanel(mkt + "  " + curPrice, v.txt, v.expMin.toString() + " min signal", v.color)
+        setPanel(mkt + "  " + curPrice, v.txt, v.expMin.toString() + " min | " + dbg, v.color)
         if (v.txt != lastVerdictTxt || now - lastSpeak > 25000) {
             speak(mkt.replace("/", " ") + "। " + v.speak)
             lastSpeak = now; lastVerdictTxt = v.txt
