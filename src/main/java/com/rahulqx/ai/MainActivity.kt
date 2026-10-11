@@ -5,6 +5,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.pm.ServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -80,15 +81,34 @@ class ScanService : Service() {
     override fun onBind(i: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, f: Int, id: Int): Int {
-        startForeground(1, buildNotif())
+        try {
+            if (Build.VERSION.SDK_INT >= 29)
+                startForeground(1, buildNotif(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            else
+                startForeground(1, buildNotif())
+        } catch (e: Exception) {
+            try { startForeground(1, buildNotif()) } catch (_: Exception) {}
+        }
         initTts()
         showBubble()
+        setBubble("QX AI\nSTARTING...", 0xF23A2F10.toInt())
+        speak("RAHUL QX AI prostut")
         val code = intent?.getIntExtra("code", 0) ?: 0
         val data = if (Build.VERSION.SDK_INT >= 33)
             intent?.getParcelableExtra("data", Intent::class.java)
         else @Suppress("DEPRECATION") intent?.getParcelableExtra("data")
-        if (code != 0 && data != null) startScan(code, data) else stopSelf()
+        if (code != 0 && data != null) {
+            try { startScan(code, data) }
+            catch (e: Exception) { setBubble("QX AI\nERR: " + (e.message ?: "scan"), 0xF23D1520.toInt()) }
+        } else stopSelf()
         return START_NOT_STICKY
+    }
+
+    private fun setBubble(t: String, color: Int) {
+        handler.post {
+            bubble?.text = t
+            bubble?.setBackgroundColor(color)
+        }
     }
 
     private fun buildNotif(): Notification {
@@ -158,6 +178,11 @@ class ScanService : Service() {
     private fun startScan(code: Int, data: Intent) {
         val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         proj = mpm.getMediaProjection(code, data)
+        if (proj == null) {
+            setBubble("QX AI\nERR: projection null", 0xF23D1520.toInt())
+            return
+        }
+        setBubble("QX AI\nSCANNING", 0xF2121830.toInt())
         proj?.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() { stopSelf() }
         }, handler)
