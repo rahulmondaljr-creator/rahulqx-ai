@@ -35,9 +35,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.TextRecognizerOptions
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
@@ -111,8 +108,10 @@ class ScanService : Service() {
     private var lockMarket = ""
     private var lockUntil = 0L
     private var lockDir = ""
+    private var ocrClient: Any? = null
+    private var ocrProcess: java.lang.reflect.Method? = null
+    private var ocrImageClass: Class<*>? = null
     private val handler = Handler(Looper.getMainLooper())
-    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private val animColors = intArrayOf(0xE6121830.toInt(), 0xE60E3D2C.toInt(), 0xE62A1F4D.toInt(), 0xE63A2F10.toInt())
     private var animIdx = 0
     private val scanLabels = arrayOf("ANALYZING SMA...", "ANALYZING EMA...", "ANALYZING BOLLINGER...", "ANALYZING MACD...", "ANALYZING STOCHASTIC...", "ANALYZING ATR...")
@@ -127,7 +126,7 @@ class ScanService : Service() {
                 startForeground(1, buildNotif(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
             else startForeground(1, buildNotif())
         } catch (e: Exception) { try { startForeground(1, buildNotif()) } catch (_: Exception) {} }
-        initTts(); showPanel()
+        initTts(); initOcr(); showPanel()
         setPanel("QX AI", "STARTING...", "--", 0xF23A2F10.toInt())
         speak("RAHUL QX AI prostut")
         val code = intent?.getIntExtra("code", 0) ?: 0
@@ -136,6 +135,17 @@ class ScanService : Service() {
         if (code != 0 && data != null) { try { startScan(code, data) } catch (e: Exception) { setPanel("QX AI", "ERR: " + (e.message ?: "scan"), "--", 0xF23D1520.toInt()) } }
         else stopSelf()
         return START_NOT_STICKY
+    }
+
+    private fun initOcr() {
+        try {
+            val tr = Class.forName("com.google.mlkit.vision.text.TextRecognition")
+            val oc = Class.forName("com.google.mlkit.vision.text.TextRecognizerOptions")
+            val def = oc.getField("DEFAULT_OPTIONS").get(null)
+            ocrClient = tr.getMethod("getClient", oc).invoke(null, def)
+            ocrImageClass = Class.forName("com.google.mlkit.vision.common.InputImage")
+            ocrProcess = ocrClient!!.javaClass.getMethod("process", ocrImageClass)
+        } catch (e: Exception) { ocrClient = null }
     }
 
     private fun buildNotif(): Notification {
@@ -259,16 +269,27 @@ class ScanService : Service() {
     }
 
     private fun runOcr(bmp: Bitmap) {
+        val client = ocrClient ?: return
         try {
-            val image = InputImage.fromBitmap(bmp, 0)
-            recognizer.process(image).addOnSuccessListener { res ->
-                val txt = res.text
-                val mp = Regex("([A-Z]{3})\\s?/\\s?([A-Z]{3})").find(txt)
-                if (mp != null) curMarket = mp.groupValues[1] + "/" + mp.groupValues[2]
-                val pr = Regex("\\d{1,3}\\.\\d{4,5}").find(txt)
-                if (pr != null) curPrice = pr.value
+            val image = ocrImageClass!!.getMethod("fromBitmap", Bitmap::class.java, Int::class.javaPrimitiveType).invoke(null, bmp, 0)
+            val task = ocrProcess!!.invoke(client, image)
+            val listenerClass = Class.forName("com.google.android.gms.tasks.OnSuccessListener")
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(listenerClass.classLoader, arrayOf(listenerClass)) { _, method, args ->
+                if (method.name == "onSuccess" && args != null && args.isNotEmpty()) {
+                    try {
+                        val txt = args[0].javaClass.getMethod("getText").invoke(args[0]) as String
+                        val mp = Regex("([A-Z]{3})\\s?/\\s?([A-Z]{3})").find(txt)
+                        val pr = Regex("\\d{1,3}\\.\\d{4,5}").find(txt)
+                        handler.post {
+                            if (mp != null) curMarket = mp.groupValues[1] + "/" + mp.groupValues[2]
+                            if (pr != null) curPrice = pr.value
+                        }
+                    } catch (_: Exception) {}
+                }
+                null
             }
-        } catch (_: Exception) {}
+            task.javaClass.getMethod("addOnSuccessListener", listenerClass).invoke(task, proxy)
+        } catch (e: Exception) {}
     }
 
     private fun processFrame(bmp0: Bitmap) {
@@ -378,7 +399,6 @@ class ScanService : Service() {
     }
 
     override fun onDestroy() {
-        try { recognizer.close() } catch (_: Exception) {}
         try { tts?.stop(); tts?.shutdown() } catch (_: Exception) {}
         try { disp?.release(); reader?.close(); proj?.stop() } catch (_: Exception) {}
         try { panel?.let { wm?.removeView(it) } } catch (_: Exception) {}
