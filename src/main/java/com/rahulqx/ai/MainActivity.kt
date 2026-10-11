@@ -47,7 +47,8 @@ class MainActivity : Activity() {
     }
     private fun testVoice() {
         Toast.makeText(this, "Voice test...", Toast.LENGTH_SHORT).show()
-        val t = TextToSpeech(this) { st ->
+        lateinit var t: TextToSpeech
+        t = TextToSpeech(this) { st ->
             if (st == TextToSpeech.SUCCESS) {
                 val r1 = t.setLanguage(Locale("bn", "IN"))
                 if (r1 == TextToSpeech.LANG_MISSING_DATA || r1 == TextToSpeech.LANG_NOT_SUPPORTED) {
