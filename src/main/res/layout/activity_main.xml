@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="28dp"
+    android:background="#0B1220">
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="RAHUL QX AI"
+        android:textColor="#00E5A0"
+        android:textSize="28sp"
+        android:textStyle="bold" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Screen-watch AI — chart দেখলে নিজে নিজে UP / DOWN বলবে"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:gravity="center" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="১. Start চাপো\n২. Screen share permission দাও\n৩. Quotex chart খোলো — bubble ভাসবে\n৪. Bubble টেনে সরাও / tap = বন্ধ\n\n⚠️ ক্যান্ডেল-গতির পড়া, গ্যারান্টি না।"
+        android:textColor="#8FA3C0"
+        android:textSize="13sp" />
+    <Button
+        android:id="@+id/btnStart"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="START AI"
+        android:textSize="18sp" />
+</LinearLayout>
